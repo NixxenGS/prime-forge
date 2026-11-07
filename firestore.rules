@@ -1,0 +1,54 @@
+rules_version = '2';
+// Security rules for Prime Forge online tables.
+// Paste this whole file into Firebase console → Firestore Database → Rules, then press Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // Each person's list of tables, so a Google-linked account finds them on any device.
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    // A table. Its long random id is the invite: nobody can list tables, only open one they know.
+    match /tables/{tableId} {
+      function table() { return get(/databases/$(database)/documents/tables/$(tableId)).data; }
+      function isGM() { return signedIn() && table().gm == request.auth.uid; }
+      function isMember() {
+        return signedIn() && (exists(/databases/$(database)/documents/tables/$(tableId)/members/$(request.auth.uid)) || isGM());
+      }
+
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.gm == request.auth.uid;
+      allow update: if signedIn() && resource.data.gm == request.auth.uid && request.resource.data.gm == resource.data.gm;
+      allow delete: if signedIn() && resource.data.gm == request.auth.uid;
+
+      // People at the table. Anyone with the invite can join while the GM leaves joining open.
+      match /members/{memberId} {
+        allow read: if isMember();
+        allow create: if signedIn() && request.auth.uid == memberId && (table().get('open', true) != false || isGM());
+        allow update: if signedIn() && request.auth.uid == memberId;
+        allow delete: if signedIn() && (request.auth.uid == memberId || isGM());
+      }
+
+      // Characters. Players edit their own; the GM edits all, hands them out, and can hide NPCs from players.
+      match /chars/{charId} {
+        allow read: if isGM() || (isMember() && resource.data.hidden == false);
+        allow create: if isMember() && (isGM() || (request.resource.data.owner == request.auth.uid && request.resource.data.hidden == false));
+        allow update: if isGM() || (isMember() && resource.data.owner == request.auth.uid
+                                     && request.resource.data.owner == request.auth.uid && request.resource.data.hidden == false);
+        allow delete: if isGM() || (isMember() && resource.data.owner == request.auth.uid);
+      }
+
+      // Shared dice rolls.
+      match /rolls/{rollId} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.by == request.auth.uid
+                      && request.resource.data.text is string && request.resource.data.text.size() <= 500;
+        allow delete: if isGM();
+      }
+    }
+  }
+}
