@@ -15,7 +15,15 @@ Two web apps for **Cortex Prime** that share one campaign server:
    - Characters save to the campaign as people type and stay with each player's account. Signing in on another phone or computer brings everything back.
    - The GM sees every sheet live. The GM can edit any sheet, hand a character to a player, or hide NPCs from players.
    - Players see the party's sheets but can only change their own.
-4. Dice rolls are shared with the campaign. Each player can switch this off on the **Campaign** page.
+4. **Dice room:** while a campaign is online, the Dice tab becomes a shared room.
+   - The GM taps a player and asks for a **Test**, a **Contest** or **Other**:
+     - **Test:** the GM sets the difficulty by rolling difficulty dice or picking a static number. The player has to beat it.
+     - **Contest:** whoever starts rolls first. Each side then has to beat the last total until someone fails or gives in. A player who gives in earns 1 plot point.
+     - **Other:** a plain roll call, from the player alone or from both sides.
+   - Each side builds and rolls their own pool on their own device, then presses **Lock in**. The app compares the totals and shows who won, including heroic successes.
+   - A **Your roll** button lights up in the top bar for whoever has to roll next.
+   - Only the GM rolls opposition. The player app has no opposition dice.
+   - Every roll also appears under **Campaign rolls**. Each player can switch sharing off on the **Campaign** page.
 5. GM tools:
    - **Let new players join** switches joining by code on or off.
    - **New code** retires the old code.

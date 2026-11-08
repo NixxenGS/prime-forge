@@ -32,14 +32,14 @@ function tabsFor() {
   const S = curS(); const C = curC();
   if (APP_MODE === 'play') {
     const p = [{ id: 'home', label: 'Campaigns' }];
-    if (S && netT(S) && (NET.user || NET.status === 'off' || NET.status === 'connecting')) p.push({ id: 'chars', label: 'Characters', n: charsOf(S).length || '' }, { id: 'dice', label: 'Dice' }, { id: 'rules', label: 'Setting guide' }, { id: 'camp', label: 'Campaign' });
+    if (S && netT(S) && (NET.user || NET.status === 'off' || NET.status === 'connecting')) p.push({ id: 'chars', label: 'Characters', n: charsOf(S).length || '' }, { id: 'dice', label: 'Dice room' }, { id: 'rules', label: 'Setting guide' }, { id: 'camp', label: 'Campaign' });
     return p;
   }
   const t = [{ id: 'vault', label: 'Vault' }];
   if (S) {
     if (!isLocked(S)) t.push({ id: 'designer', label: 'Designer' });
     t.push({ id: 'chars', label: 'Characters', n: charsOf(S).length || '' });
-    t.push({ id: 'dice', label: 'Dice' });
+    t.push({ id: 'dice', label: netT(S) ? 'Dice room' : 'Dice' });
     if (!isLocked(S)) t.push({ id: 'gm', label: T(S, 'gm') + ' table' });
     t.push({ id: 'rules', label: isLocked(S) ? 'Setting guide' : 'Rules' });
   } else t.push({ id: 'dice', label: 'Dice' });
@@ -60,7 +60,7 @@ function renderBar() {
       ${settings.map(s => `<option value="${s.id}" ${S && S.id === s.id ? 'selected' : ''}>${esc(s.name || 'Untitled')}${s.table && DB.net.tables[s.table] && !DB.net.tables[s.table].gone ? ' (online)' : s.lock ? ' (player pack)' : ''}</option>`).join('')}
     </select></label>` : ''}
     <nav class="tabs" aria-label="Sections">${tabs.map(t => `<button class="tab" data-act="go" data-tab="${t.id}" ${DB.ui.tab === t.id ? 'aria-current="page"' : ''}>${esc(t.label)}${t.n ? `<span class="n">${t.n}</span>` : ''}</button>`).join('')}</nav>
-    <div class="bar-right">${typeof netBadge === 'function' ? netBadge() : ''}
+    <div class="bar-right">${typeof netBadge === 'function' ? netAskPill() + netBadge() : ''}
       <button class="icon-btn" data-act="toggleTheme" title="Switch to ${dark ? 'Handbook (light)' : 'Neon (dark)'} theme" aria-label="Switch theme">${dark ? '☀' : '☾'}</button>
     </div></div>`;
 }

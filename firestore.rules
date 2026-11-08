@@ -52,6 +52,20 @@ service cloud.firestore {
         allow delete: if isGM() || (isMember() && resource.data.owner == request.auth.uid);
       }
 
+      // Rolls the GM asks for (tests, contests, other rolls). Only the GM creates them and rolls opposition;
+      // the asked player can only add their own roll, on their turn, without touching earlier rolls.
+      match /checks/{checkId} {
+        allow read: if isMember();
+        allow create, delete: if isGM();
+        allow update: if isGM() || (isMember()
+          && resource.data.target == request.auth.uid
+          && resource.data.status == 'open' && resource.data.turn == 'player'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rounds', 'turn', 'status', 'winner', 'margin', 'heroic', 'at'])
+          && request.resource.data.rounds.size() == resource.data.rounds.size() + 1
+          && request.resource.data.rounds[0:resource.data.rounds.size()] == resource.data.rounds
+          && request.resource.data.rounds[resource.data.rounds.size()].side == 'player');
+      }
+
       // Shared dice rolls.
       match /rolls/{rollId} {
         allow read: if isMember();

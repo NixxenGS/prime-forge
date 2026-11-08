@@ -22,10 +22,12 @@ VIEWS.dice = () => {
       ${scaleOn ? `<label class="check" style="align-items:center"><input type="checkbox" class="bubble" ${POOL.scale ? 'checked' : ''} data-act="toggleScale"><span class="small">Scale die (${S.opt.multiScale ? sel('P.scaleDie', POOL.scaleDie || 8, DICE.map(d => [d, 'd' + d]), { re: false, extra: 'style="width:auto;padding:1px 4px"' }) : 'd8'}, keep +1)</span></label>` : ''}</div>
     <div class="row" style="margin-top:12px"><button class="btn big" data-act="rollPool" ${POOL.own.length || POOL.res.length ? '' : 'disabled'}>Roll ${POOL.own.length + POOL.res.length + (POOL.scale ? 1 : 0)} dice</button><button class="btn quiet" data-act="clearPool">Clear pool</button></div>
     ${POOL.last ? resultPanel(S, C) : ''}</div></div>`;
-  const opp = oppPanel(S);
-  return `<div class="pagehead"><div><h1>Dice</h1><p class="lede">Roll the pool, keep two for the total, pick an effect die. Ones are hitches.</p></div></div>
-    <div class="rollzone">${own}${opp}</div>
-    ${outcomePanel(S)}
+  const room = S && netT(S) && NET.user ? netRoomPanel(S) : '';
+  const head = room ? `<div class="pagehead"><div><h1>Dice room</h1><p class="lede">Shared with everyone in ${esc(netT(S).name || S.name)}. ${APP_MODE === 'play' ? 'When the GM asks for a roll, build your pool, roll, and lock it in.' : 'Ask a player for a roll; you each roll on your own side and the app compares them.'}</p></div></div>`
+    : `<div class="pagehead"><div><h1>Dice</h1><p class="lede">Roll the pool, keep two for the total, pick an effect die. Ones are hitches.</p></div></div>`;
+  const zone = APP_MODE === 'play' ? `<div class="rollzone">${own}${room || '<div></div>'}</div>` : `${room}<div class="rollzone" ${room ? 'style="margin-top:22px"' : ''}>${own}${oppPanel(S)}</div>${outcomePanel(S)}`;
+  return `${head}
+    ${zone}
     <section class="sec" style="margin-top:22px"><div class="sec-head"><h2>Roll log</h2>${DB.log.length ? '<button class="btn quiet small" data-act="clearLog">Clear log</button>' : ''}</div>
     <ul class="loglist">${DB.log.slice(0, 30).map(l => `<li><span class="muted small">${new Date(l.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> <b class="k">${esc(l.who)}</b> ${esc(l.text)}</li>`).join('') || '<li class="muted">No rolls yet.</li>'}</ul></section>
     ${S ? netRollFeed(S) : ''}`;
@@ -83,7 +85,8 @@ A.rollPool = () => {
   }
   const results = rollItems(items);
   const R = { results, resRolls: POOL.res.map(r => Object.assign({}, r, { val: rollDie(r.die) })), hero: [], keep, effects: 1, at: Date.now(), charId: C ? C.id : null, events: [] };
-  R.target = (POOL.opRoll && POOL.opRoll.at) ? POOL.opRoll.total : (POOL.staticDiff != null && POOL.staticDiff !== '' ? +POOL.staticDiff : null);
+  const ct = netCheckTarget();
+  R.target = ct != null ? ct : APP_MODE === 'play' ? null : (POOL.opRoll && POOL.opRoll.at) ? POOL.opRoll.total : (POOL.staticDiff != null && POOL.staticDiff !== '' ? +POOL.staticDiff : null);
   R.firstRoll = !(POOL.opRoll && POOL.opRoll.at);
   autoAssign(results, assignOpts(S, R));
   if (C && S) {
@@ -144,7 +147,7 @@ function resultPanel(S, C) {
     ${o.overEff ? `<p class="small" style="color:var(--warn)">${nEff} effect dice chosen but only ${R.effects} kept.</p>` : ''}
     ${o.botch ? `<p class="verdict lose">Botch</p><p class="small">The ${esc(T(S, 'gm'))} can create a ${dlabel(Math.min(hitchC, 12))}${hitchC > 12 ? '+ (taken out)' : ''} complication for free.</p>`
       : o.hitches ? `<p class="small">The ${esc(T(S, 'gm'))} may give a ${esc(pp)} to turn the hitches into a ${dlabel(Math.min(hitchC, 12))} complication${S && on(S, 'doom') ? `, or add ${R.results.filter(r => r.val === 1).map(r => dlabel(r.die)).join(' / ')} to the ${esc((S.opt.doomName || 'doom pool').toLowerCase())}` : ''}.
-        ${C ? `<button class="linkbtn" data-act="activateHitch">${esc(T(S, 'gm'))} activates</button>` : ''}</p>` : ''}
+        ${C && APP_MODE !== 'play' ? `<button class="linkbtn" data-act="activateHitch">${esc(T(S, 'gm'))} activates</button>` : ''}</p>` : ''}
     ${spends ? `<div class="row" style="gap:6px;margin-top:6px">${spends}</div>` : ''}
     <p class="small muted" style="margin-top:8px">Tap a die to move it between total, effect and unused.</p></div>`;
 }

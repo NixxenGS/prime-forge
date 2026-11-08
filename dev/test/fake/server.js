@@ -26,7 +26,7 @@ function allowRead(uid, path, data) {
   if (s[0] !== 'tables') return false;
   if (s.length === 2) return true;               // get only (list is refused in query())
   const sub = s[2];
-  if (sub === 'members' || sub === 'rolls') return isMember(uid, path);
+  if (sub === 'members' || sub === 'rolls' || sub === 'checks') return isMember(uid, path);
   if (sub === 'chars') return isGM(uid, path) || (isMember(uid, path) && data && data.hidden === false);
   return false;
 }
@@ -57,6 +57,16 @@ function allowWrite(uid, path, before, after) {
     if (!after) return gm || (before && before.owner === uid);
     if (!before) return mem && (gm || (after.owner === uid && after.hidden === false));
     return gm || (before.owner === uid && after.owner === uid && after.hidden === false);
+  }
+  if (sub === 'checks') {
+    if (!before) return gm;
+    if (!after) return gm;
+    if (gm) return true;
+    if (!mem || before.target !== uid || before.status !== 'open' || before.turn !== 'player') return false;
+    const keys = new Set(Object.keys(before).concat(Object.keys(after)).filter(k => JSON.stringify(before[k]) !== JSON.stringify(after[k])));
+    if ([...keys].some(k => !['rounds', 'turn', 'status', 'winner', 'margin', 'heroic', 'at'].includes(k))) return false;
+    const br = before.rounds || [], ar = after.rounds || [];
+    return ar.length === br.length + 1 && JSON.stringify(ar.slice(0, br.length)) === JSON.stringify(br) && ar[br.length].side === 'player';
   }
   if (sub === 'rolls') {
     if (!after) return gm;

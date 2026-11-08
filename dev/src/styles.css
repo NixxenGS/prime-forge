@@ -524,3 +524,24 @@ span.netpill { cursor: default; }
 .brandsub { font-family: var(--f-display); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--crimson); border: 1px solid currentColor; border-radius: 999px; padding: 2px 7px 1px; margin-left: 8px; align-self: center; }
 .playcard .nm { font-size: 20px; }
 @media (max-width: 600px) { .brandsub { display: none; } .codebig { font-size: 24px; } .authbox { margin-top: 14px; } }
+
+/* ---------- dice room ---------- */
+.netask { font-family: var(--f-display); font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 5px 12px 4px; border-radius: 999px; border: 0; background: var(--crimson); color: #fff; cursor: pointer; white-space: nowrap; animation: netaskPulse 1.6s ease-in-out infinite; }
+@keyframes netaskPulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--crimson) 45%, transparent); } 50% { box-shadow: 0 0 0 7px transparent; } }
+@media (prefers-reduced-motion: reduce) { .netask { animation: none; } }
+.roompanel .askrow .chip { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 6px 12px; line-height: 1.2; }
+.checkgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; }
+.checkgrid.past { margin-top: 8px; opacity: .85; }
+.checkcard { padding: 14px 16px; }
+.checkcard.myturn { border: 2px solid var(--crimson); }
+.checkcard.cancelled { opacity: .6; }
+.rounds { display: flex; flex-direction: column; gap: 6px; }
+.round { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border-radius: 8px; background: var(--paper-2, rgba(0,0,0,.03)); }
+.round.gm { border-left: 3px solid var(--ink-2); }
+.round.player { border-left: 3px solid var(--crimson); }
+.round .rname { font-family: var(--f-display); font-weight: 700; font-size: 13px; letter-spacing: .03em; min-width: 76px; }
+.round .rdice { display: inline-flex; gap: 3px; flex-wrap: wrap; flex: 1; align-items: center; }
+.round .rdice svg.die { width: 26px; height: 26px; }
+.round .rtot { font-family: var(--f-display); font-weight: 700; font-size: 22px; color: var(--crimson); min-width: 28px; text-align: right; }
+.round .reff svg.die { width: 24px; height: 24px; }
+@media (max-width: 600px) { .netask { padding: 5px 9px 4px; font-size: 11px; } .round .rname { min-width: 0; width: 100%; } }

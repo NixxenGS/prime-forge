@@ -12,7 +12,7 @@ function renderPlayBar(S, tabs, dark) {
       ${camps.map(T => `<option value="${T.settingId}" ${S && S.id === T.settingId ? 'selected' : ''}>${esc(T.name || 'Campaign')}</option>`).join('')}
     </select></label>` : ''}
     <nav class="tabs" aria-label="Sections">${tabs.length > 1 ? tabs.map(t => `<button class="tab" data-act="go" data-tab="${t.id}" ${DB.ui.tab === t.id ? 'aria-current="page"' : ''}>${esc(t.label)}${t.n ? `<span class="n">${t.n}</span>` : ''}</button>`).join('') : ''}</nav>
-    <div class="bar-right">${netBadge()}
+    <div class="bar-right">${netAskPill()}${netBadge()}
       <button class="icon-btn" data-act="toggleTheme" title="Switch to ${dark ? 'Handbook (light)' : 'Neon (dark)'} theme" aria-label="Switch theme">${dark ? '☀' : '☾'}</button>
     </div></div>`;
 }

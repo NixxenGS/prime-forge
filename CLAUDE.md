@@ -18,7 +18,7 @@ Both apps are the same source built twice with `const APP_MODE = 'gm' | 'play'`.
 ```
 cd dev
 python build.py        # writes dev/dist/prime-forge.html + play.html and refreshes ../index.html + ../play/index.html
-python test/t1.py      # ... t6.py; each should end with "no errors"
+python test/t1.py      # ... t7.py; each should end with "no errors"
 ```
 - `t1`–`t4` test the offline app.
 - `t5` runs the GM app and several player-app browsers over http against `test/fake/server.js`. It covers sign-up, Google, room codes, a second device, sign-out wipe and permissions. That fake mirrors Firebase Auth, Firestore and `firestore.rules`, so if you change the rules, change the fake to match.
@@ -39,6 +39,21 @@ python test/t1.py      # ... t6.py; each should end with "no errors"
   - `users/{uid}` holds `{ name, tables }`, which is how an account finds its campaigns on any device.
 - Tables can't be listed. Players reach a table through its room code.
 - Viewing another player's character renders read-only (`VIEW_RO` and `RO_OK` in `10-shell.js`).
+
+## Dice room (`src/js/21-room.js`)
+- Checks live at `tables/{tid}/checks/{id}`. Fields:
+  - `type`: test, contest or other
+  - `label`, `target` (player uid), `charId`
+  - `turn` (gm or player), `status` (open, done or cancelled)
+  - `rounds[]` (side, total, effect, dice, giveIn), `winner`, `margin`, `heroic`
+- Only the GM creates checks or rolls opposition. The player app hides `oppPanel` and `outcomePanel`.
+- Rules let the target player append exactly one `player` round on their turn, without changing earlier rounds.
+- A roll can be locked in only if it was made after this device saw the turn arrive. `NET.turnSeen` is local time, so clock skew between devices doesn't matter.
+- `netResolve` applies the Cortex rules:
+  - Test: the GM goes first, the player must beat, ties fail, heroic at +5.
+  - Contest: alternate rolls until a side fails to beat or gives in. A player who gives in gets +1 PP.
+  - Other: no automatic winner.
+- `t7` covers the room end to end, with rigged `Math.random`.
 
 ## Decisions the user made (keep these)
 - No presets: settings are built from scratch and can be saved.

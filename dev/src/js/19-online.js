@@ -124,7 +124,7 @@ function netWipeLocal() {   // the player app keeps nothing that isn't the signe
   Object.keys(NET.subs).forEach(netUnwatch);
   DB.settings = {}; DB.chars = {}; DB.log = []; DB.net.tables = {}; DB.net.uid = '';
   DB.ui.settingId = null; DB.ui.charId = null; DB.ui.cview = 'list'; DB.ui.tab = 'home';
-  NET.seen = {}; NET.sent = {}; NET.members = {}; NET.rolls = {}; NET.meta = {};
+  NET.seen = {}; NET.sent = {}; NET.members = {}; NET.rolls = {}; NET.meta = {}; NET.checks = {};
   try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); } catch (e) { }   // right away, not on the usual delay
   save();
 }
@@ -213,9 +213,10 @@ function netWatch(tid) {
   u.push(cq.onSnapshot(qs => netOnChars(tid, qs), fail));
   u.push(ref.collection('members').onSnapshot(qs => { NET.members[tid] = qs.docs.map(d => Object.assign({ uid: d.id }, d.data())).sort((a, b) => (a.joined || 0) - (b.joined || 0)); netRefresh(); }, fail));
   u.push(ref.collection('rolls').orderBy('at', 'desc').limit(30).onSnapshot(qs => netOnRolls(tid, qs), fail));
+  u.push(ref.collection('checks').orderBy('created', 'desc').limit(20).onSnapshot(qs => netOnChecks(tid, qs), fail));
   NET.subs[tid] = u;
 }
-function netUnwatch(tid) { (NET.subs[tid] || []).forEach(f => { try { f(); } catch (e) { } }); delete NET.subs[tid]; delete NET.rollInit[tid]; }
+function netUnwatch(tid) { (NET.subs[tid] || []).forEach(f => { try { f(); } catch (e) { } }); delete NET.subs[tid]; delete NET.rollInit[tid]; if (NET.checks) delete NET.checks[tid]; }
 function netTableErr(tid, err) {
   const T = DB.net.tables[tid]; if (!T) return;
   if (err && err.code === 'permission-denied') return netTableGone(tid, T.role === 'gm' ? 'denied' : 'removed');
@@ -279,7 +280,7 @@ function netOnRolls(tid, qs) {
   if (NET.rollInit[tid]) {
     qs.docChanges().forEach(ch => {
       if (ch.type !== 'added') return; const r = ch.doc.data();
-      if (r.by !== netUid() && Date.now() - (r.at || 0) < 60000) toast(`${r.who || r.name || 'Someone'} ${r.text}`.slice(0, 160));
+      if (r.by !== netUid() && Date.now() - (r.at || 0) < 60000 && DB.ui.tab !== 'dice') toast(`${r.who || r.name || 'Someone'} ${r.text}`.slice(0, 160));
     });
   }
   NET.rollInit[tid] = true; NET.rolls[tid] = list;
@@ -458,7 +459,7 @@ async function netClose(tid) {
   try {
     await ref.update({ closed: true, open: false, at: Date.now() });
     if (code) await NET.db.collection('codes').doc(code).delete();
-    for (const sub of ['chars', 'rolls', 'members']) {
+    for (const sub of ['chars', 'rolls', 'checks', 'members']) {
       const qs = await ref.collection(sub).get();
       await Promise.all(qs.docs.map(d => d.ref.delete()));
     }
