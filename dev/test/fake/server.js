@@ -64,9 +64,11 @@ function allowWrite(uid, path, before, after) {
     if (gm) return true;
     if (!mem || before.target !== uid || before.status !== 'open' || before.turn !== 'player') return false;
     const keys = new Set(Object.keys(before).concat(Object.keys(after)).filter(k => JSON.stringify(before[k]) !== JSON.stringify(after[k])));
-    if ([...keys].some(k => !['rounds', 'turn', 'status', 'winner', 'margin', 'heroic', 'at'].includes(k))) return false;
-    const br = before.rounds || [], ar = after.rounds || [];
-    return ar.length === br.length + 1 && JSON.stringify(ar.slice(0, br.length)) === JSON.stringify(br) && ar[br.length].side === 'player';
+    if ([...keys].some(k => !['rounds', 'n', 'turn', 'status', 'winner', 'margin', 'heroic', 'at'].includes(k))) return false;
+    if (after.n !== before.n + 1) return false;
+    const br = before.rounds || {}, ar = after.rounds || {}, k = 'r' + before.n;
+    const rk = new Set(Object.keys(br).concat(Object.keys(ar)).filter(x => JSON.stringify(br[x]) !== JSON.stringify(ar[x])));
+    return [...rk].every(x => x === k) && !!ar[k] && ar[k].side === 'player';
   }
   if (sub === 'rolls') {
     if (!after) return gm;

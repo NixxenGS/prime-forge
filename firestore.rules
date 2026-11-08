@@ -52,18 +52,19 @@ service cloud.firestore {
         allow delete: if isGM() || (isMember() && resource.data.owner == request.auth.uid);
       }
 
-      // Rolls the GM asks for (tests, contests, other rolls). Only the GM creates them and rolls opposition;
-      // the asked player can only add their own roll, on their turn, without touching earlier rolls.
+      // Rolls the GM asks for (tests, contests, other rolls). Only the GM creates them and rolls opposition.
+      // Rounds are a map r0, r1, ... with n = how many. On their turn, the asked player may add exactly
+      // one round (r<n>, their own) and nothing else.
       match /checks/{checkId} {
         allow read: if isMember();
         allow create, delete: if isGM();
         allow update: if isGM() || (isMember()
           && resource.data.target == request.auth.uid
           && resource.data.status == 'open' && resource.data.turn == 'player'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rounds', 'turn', 'status', 'winner', 'margin', 'heroic', 'at'])
-          && request.resource.data.rounds.size() == resource.data.rounds.size() + 1
-          && request.resource.data.rounds[0:resource.data.rounds.size()] == resource.data.rounds
-          && request.resource.data.rounds[resource.data.rounds.size()].side == 'player');
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rounds', 'n', 'turn', 'status', 'winner', 'margin', 'heroic', 'at'])
+          && request.resource.data.n == resource.data.n + 1
+          && request.resource.data.rounds.diff(resource.data.rounds).affectedKeys().hasOnly(['r' + string(resource.data.n)])
+          && request.resource.data.rounds['r' + string(resource.data.n)].side == 'player');
       }
 
       // Shared dice rolls.

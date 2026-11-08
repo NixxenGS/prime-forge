@@ -45,9 +45,10 @@ python test/t1.py      # ... t7.py; each should end with "no errors"
   - `type`: test, contest or other
   - `label`, `target` (player uid), `charId`
   - `turn` (gm or player), `status` (open, done or cancelled)
-  - `rounds[]` (side, total, effect, dice, giveIn), `winner`, `margin`, `heroic`
+  - `rounds` as a map `r0, r1, …` with `n` = count (each round: side, total, effect, dice, giveIn), `winner`, `margin`, `heroic`. `netRoundsArr` turns it into an array on read.
 - Only the GM creates checks or rolls opposition. The player app hides `oppPanel` and `outcomePanel`.
-- Rules let the target player append exactly one `player` round on their turn, without changing earlier rounds.
+- Rules let the target player add exactly one round on their turn (`rounds.r<n>`, side `player`, and `n` + 1) using map `diff()`, so earlier rounds can't change.
+- The player app uses its own Firebase app name (`prime-forge-play`). Both apps share an origin, so without it, signing in on one tab switched the account in the other.
 - A roll can be locked in only if it was made after this device saw the turn arrive. `NET.turnSeen` is local time, so clock skew between devices doesn't matter.
 - `netResolve` applies the Cortex rules:
   - Test: the GM goes first, the player must beat, ties fail, heroic at +5.

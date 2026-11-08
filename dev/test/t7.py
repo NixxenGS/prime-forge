@@ -155,12 +155,15 @@ async def main():
             await gm.click('[data-act="netLockIn"]')
             await until(sam, f"{latest('contest')}.turn === 'player' && !!document.querySelector('[data-act=netGiveIn]')", 'Sam can give in')
             # Sam can't rewrite earlier rounds, and Lee can't answer for him
-            hack = await sam.evaluate(f"""async () => {{ const c = {latest('contest')}; const r = JSON.parse(JSON.stringify(c.rounds)); r[1].total = 0; r.push({{ side: 'player', total: 99, effect: 12, dice: [], hitches: 0, botch: false, at: 1 }});
-              try {{ await tableRef('{tid}').collection('checks').doc(c.id).update({{ rounds: r, turn: null, status: 'done', winner: 'player', at: 2 }}); return 'allowed'; }} catch (e) {{ return e.code; }} }}""")
+            hack = await sam.evaluate(f"""async () => {{ const c = {latest('contest')}; const n = c.rounds.length;
+              try {{ await tableRef('{tid}').collection('checks').doc(c.id).update({{ 'rounds.r1.total': 0, ['rounds.r' + n]: {{ side: 'player', total: 99, effect: 12, dice: [], hitches: 0, botch: false, at: 1 }}, n: n + 1, turn: null, status: 'done', winner: 'player', at: 2 }}); return 'allowed'; }} catch (e) {{ return e.code; }} }}""")
             assert hack == 'permission-denied', hack
-            hack2 = await lee.evaluate(f"""async () => {{ const c = {latest('contest')}; const r = c.rounds.concat([{{ side: 'player', total: 99, effect: 12, dice: [], hitches: 0, botch: false, at: 1 }}]);
-              try {{ await tableRef('{tid}').collection('checks').doc(c.id).update({{ rounds: r, at: 2 }}); return 'allowed'; }} catch (e) {{ return e.code; }} }}""")
+            hack2 = await lee.evaluate(f"""async () => {{ const c = {latest('contest')}; const n = c.rounds.length;
+              try {{ await tableRef('{tid}').collection('checks').doc(c.id).update({{ ['rounds.r' + n]: {{ side: 'player', total: 99, effect: 12, dice: [], hitches: 0, botch: false, at: 1 }}, n: n + 1, at: 2 }}); return 'allowed'; }} catch (e) {{ return e.code; }} }}""")
             assert hack2 == 'permission-denied', hack2
+            hack3 = await sam.evaluate(f"""async () => {{ const c = {latest('contest')}; const n = c.rounds.length;
+              try {{ await tableRef('{tid}').collection('checks').doc(c.id).update({{ ['rounds.r' + n]: {{ side: 'gm', total: 1, effect: 4, dice: [], hitches: 0, botch: false, at: 1 }}, n: n + 1, at: 2 }}); return 'allowed'; }} catch (e) {{ return e.code; }} }}""")
+            assert hack3 == 'permission-denied', hack3
             await sam.click('[data-act="netGiveIn"]'); await sam.click('#cfYes')
             await until(gm, f"{latest('contest')}.status === 'done' && {latest('contest')}.winner === 'gm'", 'contest over after giving in')
             await until(sam, f"DB.chars['{kira}'].pp === {pp0 + 1}", 'Kira earned a plot point')
@@ -193,6 +196,18 @@ async def main():
             assert w3 == (None if l1 == g3 else 'player' if l1 > g3 else 'gm'), (l1, g3, w3)
             await lee.screenshot(path=str(OUT / '04-lee-mobile.png'), full_page=True)
             sw = await lee.evaluate("document.documentElement.scrollWidth"); assert sw <= 390, f'horizontal scroll {sw}'
+
+            # ---------- same browser: the player app doesn't inherit the GM app's sign-in ----------
+            pp2 = await gm.context.new_page()
+            pp2.on('pageerror', lambda e: problems.append(f'gm-tab-play pageerror: {e}'))
+            await pp2.goto(PLAY_URL)
+            await until(pp2, "NET.status === 'signedout'", 'player app signed out in the GM browser')
+            await signup(pp2, 'Toph', 'toph@example.com', 'metalbend')
+            gmUid = await gm.evaluate("NET.user.uid")
+            assert gmUid != await pp2.evaluate("NET.user.uid")
+            await gm.reload()
+            await until(gm, f"NET.status === 'online' && NET.user.uid === '{gmUid}'", 'GM app still the GM after the player app signed in')
+            await pp2.close()
 
             # ---------- 6. cancel and clear ----------
             await ask(gm, leeUid, 'test', 'Never mind', ('#askDiff', 's7'))

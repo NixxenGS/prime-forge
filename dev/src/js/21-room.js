@@ -2,7 +2,8 @@
    tables/{tid}/checks/{id} = {
      type: 'test' | 'contest' | 'other', label, target (player uid), targetName, charId, charName, gm (uid),
      first: 'gm' | 'player', both (other only), turn: 'gm' | 'player' | null, status: 'open' | 'done' | 'cancelled',
-     rounds: [{ side, who, total, effect, dice: [{ d, v, r }], hitches, botch, static, giveIn, at }],
+     rounds: { r0: {...}, r1: {...} }, n (number of rounds)   round = { side, who, total, effect, dice: [{ d, v, r }], hitches, botch, static, giveIn, at }
+     (stored as a map so the rules can check that a player adds exactly one round, rN, and touches nothing else)
      winner: 'gm' | 'player' | null, margin, heroic, created, at }
    Only the GM creates checks and rolls opposition. The asked player may only append their own round on their turn. */
 const CHECK_NAMES = { test: 'Test', contest: 'Contest', other: 'Roll' };
@@ -18,7 +19,7 @@ function netOnChecks(tid, qs) {
   if (!NET.checks) NET.checks = {};
   if (!NET.turnSeen) NET.turnSeen = {};
   const first = !NET.checks[tid];
-  const list = qs.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  const list = qs.docs.map(d => { const x = Object.assign({ id: d.id }, d.data()); x.old = Array.isArray(x.rounds); x.rounds = netRoundsArr(x); return x; });
   NET.checks[tid] = list;
   list.forEach(chk => {
     if (!netMyTurn(chk, tid)) return;
@@ -33,6 +34,12 @@ function netOnChecks(tid, qs) {
   });
   renderBar();
   if (DB.ui.tab === 'dice' && curS() && curS().table === tid) netRender();
+}
+function netRoundsArr(x) {
+  if (Array.isArray(x.rounds)) return x.rounds;
+  const m = x.rounds || {}, out = [];
+  for (let i = 0; i < (+x.n || 0); i++) if (m['r' + i]) out.push(m['r' + i]);
+  return out;
 }
 function netWaitingOnMe() {
   const out = [];
@@ -100,12 +107,31 @@ function netResolve(chk, rounds) {
   return { turn: other(last.side), status: 'open' };
 }
 async function netAppend(tid, chk, round) {
+  const n = (chk.rounds || []).length;
   const rounds = (chk.rounds || []).concat([round]);
   const res = netResolve(chk, rounds);
-  const upd = Object.assign({ rounds, at: Date.now() }, { turn: res.turn, status: res.status });
+  const me = NET.auth && NET.auth.currentUser && NET.auth.currentUser.uid;
+  if (round.side === 'player' && me !== chk.target) { toast('This browser is signed in to a different account than the one the GM asked. Sign in as yourself and try again.', 'bad'); return false; }
+  if (chk.old && round.side === 'player') { toast('That request came from an older version of the app. Ask the GM to send it again.', 'bad'); return false; }
+  const upd = { n: n + 1, at: Date.now(), turn: res.turn, status: res.status };
+  if (chk.old) { const m = {}; rounds.forEach((r, i) => { m['r' + i] = r; }); upd.rounds = m; }   // GM converting an old request
+  else upd['rounds.r' + n] = round;
   if (res.status === 'done') { upd.winner = res.winner; upd.margin = res.margin; upd.heroic = res.heroic; }
-  try { await tableRef(tid).collection('checks').doc(chk.id).update(upd); return true; }
-  catch (e) { toast('Couldn\'t send that roll: ' + (e.code === 'permission-denied' ? 'it isn\'t your turn anymore' : e.message || e), 'bad'); return false; }
+  const ref = tableRef(tid).collection('checks').doc(chk.id);
+  try { await ref.update(upd); return true; }
+  catch (e) {
+    let why = e.message || String(e);
+    if (e.code === 'permission-denied') {
+      why = 'Firebase refused it. Make sure the GM has published the latest security rules.';
+      try {
+        const s = await ref.get(); const d = s.data() || {};
+        if (!s.exists || d.status !== 'open') why = 'that roll was closed or cancelled.';
+        else if (d.turn !== round.side) why = 'it isn\'t your turn anymore.';
+        else if (round.side === 'player' && d.target !== me) why = 'you\'re signed in to a different account than the one the GM asked.';
+      } catch (e2) { }
+    }
+    toast('Couldn\'t send that roll: ' + why, 'bad'); return false;
+  }
 }
 A.netLockIn = async el => {
   const tid = el.dataset.tid, chk = netChecks(tid).find(c => c.id === el.dataset.id);
@@ -173,10 +199,10 @@ A.netAsk = el => {
   $('#askGo').onclick = async () => {
     const who = members.find(m => m.uid === $('#askWho').value); const C = DB.chars[$('#askChar').value];
     const chk = { type, label: $('#askLabel').value.trim().slice(0, 120), target: who.uid, targetName: who.name || '', charId: C ? C.id : '', charName: C ? (C.name || '') : '',
-      gm: netUid(), rounds: [], status: 'open', created: Date.now(), at: Date.now() };
+      gm: netUid(), rounds: {}, n: 0, status: 'open', created: Date.now(), at: Date.now() };
     if (type === 'test') {
       chk.first = 'gm'; const v = $('#askDiff').value;
-      if (v[0] === 's') { const n = +v.slice(1); chk.rounds = [{ side: 'gm', who: 'Difficulty', total: n, effect: 0, dice: [], hitches: 0, botch: false, static: n, at: Date.now() }]; chk.turn = 'player'; }
+      if (v[0] === 's') { const n = +v.slice(1); chk.rounds = { r0: { side: 'gm', who: 'Difficulty', total: n, effect: 0, dice: [], hitches: 0, botch: false, static: n, at: Date.now() } }; chk.n = 1; chk.turn = 'player'; }
       else { chk.turn = 'gm'; POOL.oppBase = v.slice(1).split(',').map(Number); POOL.useDoom = false; POOL.opRoll = null; DB.ui.oppMode = 'dice'; }
     } else if (type === 'contest') { chk.first = $('#askFirst').value; chk.turn = chk.first; }
     else { const b = $('#askBoth').value; chk.both = b !== 'p'; chk.first = b === 'gp' ? 'gm' : 'player'; chk.turn = chk.first; }

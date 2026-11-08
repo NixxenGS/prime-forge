@@ -3,8 +3,9 @@
   const URL_ = window.FAKE_FB_URL;
   const client = 'cl_' + Math.random().toString(36).slice(2);
   const err = e => { const x = new Error(e.message); x.code = e.code; return x; };
-  async function call(o) {
-    const r = await fetch(URL_ + '/op', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ client, uid: auth.currentUser && auth.currentUser.uid }, o)) });
+  async function call(o, A) {
+    A = A || auth;
+    const r = await fetch(URL_ + '/op', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ client, uid: A && A.currentUser && A.currentUser.uid }, o)) });
     const j = await r.json(); if (j.error) throw err(j.error); return j;
   }
   const subs = new Map();
@@ -23,29 +24,33 @@
     return () => { subs.delete(id); call({ op: 'unsub', subId: id }).catch(() => { }); };
   }
 
-  /* ---------- auth ---------- */
-  const KEY = 'fakefb.auth';
-  function mkUser(o) {
-    if (!o) return null;
-    const prov = o.provider || 'anonymous';
-    const u = { uid: o.uid, isAnonymous: prov === 'anonymous', email: o.email || null, displayName: o.name || null,
-      providerData: prov === 'anonymous' ? [] : [{ providerId: prov, email: o.email }] };
-    u.updateProfile = async p => { o.name = p.displayName; u.displayName = p.displayName; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) { } };
-    return u;
+  /* ---------- auth (one per named app, persisted separately like the real SDK) ---------- */
+  let auth = null;   // the auth that call() uses: whichever app made the request (set per call below)
+  function makeAuth(appName) {
+    const KEY = 'fakefb.auth:' + appName;
+    function mkUser(o) {
+      if (!o) return null;
+      const prov = o.provider || 'anonymous';
+      const u = { uid: o.uid, isAnonymous: prov === 'anonymous', email: o.email || null, displayName: o.name || null,
+        providerData: prov === 'anonymous' ? [] : [{ providerId: prov, email: o.email }] };
+      u.updateProfile = async p => { o.name = p.displayName; u.displayName = p.displayName; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) { } };
+      return u;
+    }
+    const listeners = [];
+    const A = {
+      currentUser: null,
+      onAuthStateChanged(f) { listeners.push(f); setTimeout(() => f(A.currentUser), 0); return () => { const i = listeners.indexOf(f); if (i >= 0) listeners.splice(i, 1); }; },
+      async signInAnonymously() { const r = await call({ op: 'anon' }, A); set({ uid: r.uid, provider: 'anonymous' }); return { user: A.currentUser }; },
+      async signInWithPopup() { if (window.FAKE_POPUP_CLOSED) { const e = new Error('closed'); e.code = 'auth/popup-closed-by-user'; throw e; } const r = await call({ op: 'google', email: window.FAKE_GOOGLE_EMAIL || 'gm@example.com', name: window.FAKE_GOOGLE_NAME || '' }, A); set({ uid: r.uid, email: r.email, provider: 'google.com', name: r.name }); return { user: A.currentUser }; },
+      async createUserWithEmailAndPassword(email, pw) { const r = await call({ op: 'signup', email, pw }, A); set({ uid: r.uid, email: r.email, provider: 'password' }); return { user: A.currentUser }; },
+      async signInWithEmailAndPassword(email, pw) { const r = await call({ op: 'signin', email, pw }, A); set({ uid: r.uid, email: r.email, provider: 'password' }); return { user: A.currentUser }; },
+      async sendPasswordResetEmail(email) { await call({ op: 'reset', email }, A); window.FAKE_RESET_SENT = email; },
+      async signOut() { set(null); },
+    };
+    function set(o) { try { if (o) localStorage.setItem(KEY, JSON.stringify(o)); else localStorage.removeItem(KEY); } catch (e) { } A.currentUser = mkUser(o); listeners.forEach(f => f(A.currentUser)); }
+    try { const o = JSON.parse(localStorage.getItem(KEY) || 'null'); if (o) A.currentUser = mkUser(o); } catch (e) { }
+    return A;
   }
-  const listeners = [];
-  function setUser(o) { try { if (o) localStorage.setItem(KEY, JSON.stringify(o)); else localStorage.removeItem(KEY); } catch (e) { } auth.currentUser = mkUser(o); listeners.forEach(f => f(auth.currentUser)); }
-  const auth = {
-    currentUser: null,
-    onAuthStateChanged(f) { listeners.push(f); setTimeout(() => f(auth.currentUser), 0); return () => { const i = listeners.indexOf(f); if (i >= 0) listeners.splice(i, 1); }; },
-    async signInAnonymously() { const r = await call({ op: 'anon' }); setUser({ uid: r.uid, provider: 'anonymous' }); return { user: auth.currentUser }; },
-    async signInWithPopup() { if (window.FAKE_POPUP_CLOSED) { const e = new Error('closed'); e.code = 'auth/popup-closed-by-user'; throw e; } const r = await call({ op: 'google', email: window.FAKE_GOOGLE_EMAIL || 'gm@example.com', name: window.FAKE_GOOGLE_NAME || '' }); setUser({ uid: r.uid, email: r.email, provider: 'google.com', name: r.name }); return { user: auth.currentUser }; },
-    async createUserWithEmailAndPassword(email, pw) { const r = await call({ op: 'signup', email, pw }); setUser({ uid: r.uid, email: r.email, provider: 'password' }); return { user: auth.currentUser }; },
-    async signInWithEmailAndPassword(email, pw) { const r = await call({ op: 'signin', email, pw }); setUser({ uid: r.uid, email: r.email, provider: 'password' }); return { user: auth.currentUser }; },
-    async sendPasswordResetEmail(email) { await call({ op: 'reset', email }); window.FAKE_RESET_SENT = email; },
-    async signOut() { setUser(null); },
-  };
-  try { const o = JSON.parse(localStorage.getItem(KEY) || 'null'); if (o) auth.currentUser = mkUser(o); } catch (e) { }
 
   /* ---------- firestore ---------- */
   const DEL = { __del: true };
@@ -94,9 +99,15 @@
   const apps = [];
   window.firebase = {
     apps,
-    initializeApp(cfg) { const a = { options: cfg }; apps.push(a); return a; },
-    app() { return apps[0]; },
-    auth: Object.assign(() => auth, { GoogleAuthProvider: function () { } }),
+    initializeApp(cfg, name) {
+      name = name || '[DEFAULT]';
+      const A = makeAuth(name);
+      const a = { name, options: cfg, auth: () => A, firestore: () => { auth = A; return fs; } };
+      if (!auth || name !== '[DEFAULT]') auth = A;
+      apps.push(a); return a;
+    },
+    app(name) { return apps.find(a => a.name === (name || '[DEFAULT]')); },
+    auth: Object.assign(() => (apps.find(a => a.name === '[DEFAULT]') || apps[0]).auth(), { GoogleAuthProvider: function () { } }),
     firestore: Object.assign(() => fs, { FieldValue: { delete: () => DEL, serverTimestamp: () => Date.now() } }),
   };
 })();

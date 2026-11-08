@@ -102,8 +102,11 @@ function netConnect() {
     NET.status = 'connecting'; NET.err = ''; netRefresh();
     try { await netLoadSdk(); } catch (e) { return netFail('Couldn\'t load the online service. Check your internet connection and try again.'); }
     try {
-      NET.app = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
-      NET.auth = firebase.auth(); NET.db = firebase.firestore();
+      // Each app keeps its own sign-in: the GM app and the player app share a web address, and without
+      // separate app names signing in on one tab would switch the account in the other.
+      const name = APP_MODE === 'play' ? 'prime-forge-play' : '[DEFAULT]';
+      NET.app = (firebase.apps || []).find(a => a.name === name) || (name === '[DEFAULT]' ? firebase.initializeApp(cfg) : firebase.initializeApp(cfg, name));
+      NET.auth = NET.app.auth(); NET.db = NET.app.firestore();
     } catch (e) { return netFail('Those Firebase settings didn\'t work: ' + e.message); }
     return await new Promise(resolve => {
       let first = true;
