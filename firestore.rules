@@ -1,17 +1,27 @@
 rules_version = '2';
-// Security rules for Prime Forge online tables.
+// Security rules for Prime Forge online campaigns (GM app and player app).
 // Paste this whole file into Firebase console → Firestore Database → Rules, then press Publish.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() { return request.auth != null; }
+    // Everyone signs in with Google or email + password; old guest (anonymous) sessions get nothing.
+    function signedIn() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
 
-    // Each person's list of tables, so a Google-linked account finds them on any device.
+    // Each account's name and list of campaigns, so they follow the person to any device.
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    // A table. Its long random id is the invite: nobody can list tables, only open one they know.
+    // Room codes: a short code points to one campaign. Anyone signed in can look a code up; nobody can list them.
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow list, update: if false;
+      allow create: if signedIn() && request.resource.data.gm == request.auth.uid
+                    && get(/databases/$(database)/documents/tables/$(request.resource.data.table)).data.gm == request.auth.uid;
+      allow delete: if signedIn() && resource.data.gm == request.auth.uid;
+    }
+
+    // A campaign ("table" in the data). Nobody can list them; players reach one through its room code.
     match /tables/{tableId} {
       function table() { return get(/databases/$(database)/documents/tables/$(tableId)).data; }
       function isGM() { return signedIn() && table().gm == request.auth.uid; }
@@ -25,7 +35,7 @@ service cloud.firestore {
       allow update: if signedIn() && resource.data.gm == request.auth.uid && request.resource.data.gm == resource.data.gm;
       allow delete: if signedIn() && resource.data.gm == request.auth.uid;
 
-      // People at the table. Anyone with the invite can join while the GM leaves joining open.
+      // People in the campaign. Anyone with the room code can join while the GM leaves joining open.
       match /members/{memberId} {
         allow read: if isMember();
         allow create: if signedIn() && request.auth.uid == memberId && (table().get('open', true) != false || isGM());

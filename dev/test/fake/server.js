@@ -2,7 +2,8 @@
 const http = require('http');
 const docs = new Map();            // path -> data
 const clients = new Map();         // clientId -> { res, subs: Map(subId -> sub) }
-const emails = new Map();          // google email -> uid
+const emails = new Map();          // 'g:'+email -> uid (Google), 'p:'+email -> {uid, pw} (password)
+const providers = new Map();       // uid -> 'google.com' | 'password' | 'anonymous'
 let seq = 0;
 const nid = (p = '') => p + (++seq).toString(36) + Math.random().toString(36).slice(2, 8);
 const clone = o => o === undefined ? undefined : JSON.parse(JSON.stringify(o));
@@ -10,16 +11,18 @@ const isDel = v => v && typeof v === 'object' && v.__del === true;
 
 function parent(path) { return path.split('/').slice(0, -1).join('/'); }
 function segs(path) { return path.split('/'); }
+function signedIn(uid) { return !!uid && providers.has(uid) && providers.get(uid) !== 'anonymous'; }
 function denied() { const e = new Error('Missing or insufficient permissions.'); e.code = 'permission-denied'; return e; }
 
 // ---- rules ----
 function tableOf(path) { const s = segs(path); return s[0] === 'tables' ? docs.get('tables/' + s[1]) : null; }
-function isGM(uid, path) { const t = tableOf(path); return !!(t && t.gm === uid); }
-function isMember(uid, path) { const s = segs(path); return docs.has(`tables/${s[1]}/members/${uid}`) || isGM(uid, path); }
+function isGM(uid, path) { const t = tableOf(path); return !!(signedIn(uid) && t && t.gm === uid); }
+function isMember(uid, path) { const s = segs(path); return signedIn(uid) && (docs.has(`tables/${s[1]}/members/${uid}`) || isGM(uid, path)); }
 function allowRead(uid, path, data) {
-  if (!uid) return false;
+  if (!signedIn(uid)) return false;
   const s = segs(path);
   if (s[0] === 'users') return s[1] === uid;
+  if (s[0] === 'codes') return true;           // get only (list refused in query())
   if (s[0] !== 'tables') return false;
   if (s.length === 2) return true;               // get only (list is refused in query())
   const sub = s[2];
@@ -28,9 +31,15 @@ function allowRead(uid, path, data) {
   return false;
 }
 function allowWrite(uid, path, before, after) {
-  if (!uid) return false;
+  if (!signedIn(uid)) return false;
   const s = segs(path);
   if (s[0] === 'users') return s[1] === uid;
+  if (s[0] === 'codes') {
+    if (before && after) return false;
+    if (!after) return before.gm === uid;
+    const t = docs.get('tables/' + after.table);
+    return after.gm === uid && !!t && t.gm === uid;
+  }
   if (s[0] !== 'tables') return false;
   if (s.length === 2) {
     if (!before) return after && after.gm === uid;
@@ -85,7 +94,7 @@ function write(uid, path, after) {
 }
 function query(uid, q) {
   const s = segs(q.path);
-  if (s.length === 1 && s[0] === 'tables') throw denied();
+  if (s.length === 1 && (s[0] === 'tables' || s[0] === 'codes')) throw denied();
   let out = [];
   for (const [p, d] of docs) if (parent(p) === q.path) out.push({ id: segs(p).pop(), path: p, data: d });
   for (const [f, op, v] of (q.where || [])) out = out.filter(x => op === '==' ? x.data[f] === v : true);
@@ -119,9 +128,20 @@ function broadcast() {
 function handle(o) {
   const uid = o.uid;
   switch (o.op) {
-    case 'anon': return { uid: nid('u_') };
-    case 'google': { if (!emails.has(o.email)) emails.set(o.email, nid('g_')); return { uid: emails.get(o.email), email: o.email }; }
-    case 'link': { if (emails.has(o.email) && emails.get(o.email) !== uid) { const e = new Error('This credential is already associated with a different user account.'); e.code = 'auth/credential-already-in-use'; throw e; } emails.set(o.email, uid); return { uid, email: o.email }; }
+    case 'anon': { const u = nid('u_'); providers.set(u, 'anonymous'); return { uid: u }; }
+    case 'google': { const k = 'g:' + o.email; if (!emails.has(k)) { const u = nid('g_'); emails.set(k, u); providers.set(u, 'google.com'); } return { uid: emails.get(k), email: o.email, provider: 'google.com', name: o.name || '' }; }
+    case 'signup': {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email || '')) { const e = new Error('bad email'); e.code = 'auth/invalid-email'; throw e; }
+      if (emails.has('p:' + o.email)) { const e = new Error('in use'); e.code = 'auth/email-already-in-use'; throw e; }
+      if (!o.pw || o.pw.length < 6) { const e = new Error('weak'); e.code = 'auth/weak-password'; throw e; }
+      const u = nid('p_'); emails.set('p:' + o.email, { uid: u, pw: o.pw }); providers.set(u, 'password'); return { uid: u, email: o.email, provider: 'password' };
+    }
+    case 'signin': {
+      const a = emails.get('p:' + o.email);
+      if (!a || a.pw !== o.pw) { const e = new Error('INVALID_LOGIN_CREDENTIALS'); e.code = 'auth/invalid-credential'; throw e; }
+      return { uid: a.uid, email: o.email, provider: 'password' };
+    }
+    case 'reset': return {};
     case 'get': { const d = docs.get(o.path); if (d && !allowRead(uid, o.path, d)) throw denied(); if (!d && !allowRead(uid, o.path, { hidden: false })) throw denied(); return { doc: d ? { id: segs(o.path).pop(), data: d } : null }; }
     case 'query': return { docs: query(uid, o) };
     case 'set': { const before = docs.get(o.path); write(uid, o.path, o.merge ? deepMerge(before, o.data) : deepMerge({}, o.data)); return {}; }

@@ -19,14 +19,21 @@ async def main():
             async def cfg(route):
                 await route.fulfill(content_type='text/javascript', body='window.PF_FIREBASE = { apiKey: "AIzaSyFakeKeyForTests000000000000000", authDomain: "demo-forge.firebaseapp.com", projectId: "demo-forge", appId: "1:1:web:abc" };')
             await pg.route('**/firebase-config.js', cfg)
-            await pg.goto(f'http://127.0.0.1:{port}/#/'); await pg.wait_for_timeout(500)
+            await pg.goto(f'http://127.0.0.1:{port}/'); await pg.wait_for_timeout(500)
             await pg.evaluate("DB.ui.tab='online'; render()"); await pg.wait_for_timeout(300)
             assert await pg.evaluate("netSiteCfg()"), 'site config not picked up'
             assert await pg.locator('#netCfgTxt').count() == 0, 'setup panel shown despite site config'
-            await pg.click('[data-act="netConnect"]')
-            await pg.wait_for_function("NET.status === 'error' || NET.status === 'online'", timeout=30000)
+            await pg.wait_for_function("['signedout', 'error', 'online'].includes(NET.status)", timeout=30000)
             st = await pg.evaluate("[NET.status, NET.err, typeof firebase, firebase.SDK_VERSION]")
-            print('status', st)
+            print('gm status', st)
+            assert st[0] == 'signedout', st
+            # email sign-in reaches the real SDK and fails cleanly without network
+            await pg.fill('[data-bind="N.email"]', 'gm@example.com'); await pg.fill('#netPw', 'secret123')
+            await pg.click('[data-act="netEmailGo"]')
+            await pg.wait_for_function("!NET.busy", timeout=30000)
+            toasts = await pg.evaluate("[...document.querySelectorAll('#toasts > *')].map(t => t.textContent)")
+            print('gm sign-in toast', toasts)
+            assert any('connection' in t.lower() or 'network' in t.lower() for t in toasts), toasts
             assert st[2] == 'object' and st[3] == '10.12.2', st
             assert any(u.startswith('vendor/firebase-auth-compat.js') for u in loaded), loaded
             # objects the sync layer uses exist with the expected shape
@@ -34,7 +41,19 @@ async def main():
               const q = r.collection('chars').where('hidden','==',false); const q2 = r.collection('rolls').orderBy('at','desc').limit(30);
               return [typeof r.onSnapshot, typeof q.onSnapshot, typeof q2.onSnapshot, typeof r.set, typeof r.update, typeof firebase.firestore.FieldValue.delete, typeof firebase.auth.GoogleAuthProvider, typeof firebase.auth().signInAnonymously]; }""")
             print('shape', shape); assert all(s == 'function' for s in shape), shape
-            await pg.screenshot(path=str(OUT / 'online-error.png'), full_page=True)
+            await pg.screenshot(path=str(OUT / 'gm-signin.png'), full_page=True)
+            # the player app under play/ finds ../firebase-config.js and ../vendor/
+            pp = await b.new_page(); loaded.clear()
+            pp.on('pageerror', lambda e: errs.append('play: ' + str(e)))
+            pp.on('request', lambda r: loaded.append(r.url.replace(f'http://127.0.0.1:{port}/', '')))
+            await pp.route('**/firebase-config.js', cfg)
+            await pp.goto(f'http://127.0.0.1:{port}/play/#code=abc-def')
+            await pp.wait_for_function("NET.status === 'signedout'", timeout=30000)
+            assert 'firebase-config.js' in loaded and any(u == 'vendor/firebase-firestore-compat.js' for u in loaded), loaded
+            assert await pp.evaluate("NET.pendingCode") == 'ABCDEF'
+            assert await pp.locator('[data-act="netGoogle"]').count() == 1
+            assert await pp.evaluate("document.title") == 'Prime Forge Players'
+            await pp.screenshot(path=str(OUT / 'play-signin.png'), full_page=True)
             await b.close()
     finally:
         srv.kill()

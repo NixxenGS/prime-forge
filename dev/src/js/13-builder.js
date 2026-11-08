@@ -1,7 +1,7 @@
 /* ============ Characters: list + builder ============ */
 function lockBanner(S) {
   const nb = typeof netLockBanner === 'function' ? netLockBanner(S) : '';
-  if (nb) return nb;
+  if (nb || (typeof netT === 'function' && netT(S))) return nb;
   if (!isLocked(S)) return '';
   return `<div class="lockbanner"><div><b>Player pack.</b> <span class="small">The rules are locked; you can build and play characters.</span></div><button class="btn quiet small" data-act="unlockSetting" data-id="${S.id}">Unlock (GM)</button></div>`;
 }
@@ -16,6 +16,7 @@ VIEWS.chars = () => {
 };
 function charList(S) {
   const list = charsOf(S);
+  if (APP_MODE === 'play') { const me = netUid(); list.sort((a, b) => (b.owner === me) - (a.owner === me)); }
   return `<div class="pagehead"><div><h1>Characters</h1><p class="lede">${esc(S.name)}${S.tagline ? ' · ' + esc(S.tagline) : ''}</p></div>
     <div class="acts"><button class="btn" data-act="newChar">New character</button><button class="btn ghost" data-act="importFile">Import character</button>
     ${S.creation.methods.pathways ? '<button class="btn quiet" data-act="go" data-tab="chars" data-cview="map">Pathways map</button>' : ''}<button class="btn quiet" data-act="previewBlank">Blank file</button></div></div>

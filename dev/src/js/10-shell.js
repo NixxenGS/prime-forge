@@ -30,6 +30,11 @@ function effectiveDark() { const t = DB.ui.theme; if (t === 'dark') return true;
 
 function tabsFor() {
   const S = curS(); const C = curC();
+  if (APP_MODE === 'play') {
+    const p = [{ id: 'home', label: 'Campaigns' }];
+    if (S && netT(S) && (NET.user || NET.status === 'off' || NET.status === 'connecting')) p.push({ id: 'chars', label: 'Characters', n: charsOf(S).length || '' }, { id: 'dice', label: 'Dice' }, { id: 'rules', label: 'Setting guide' }, { id: 'camp', label: 'Campaign' });
+    return p;
+  }
   const t = [{ id: 'vault', label: 'Vault' }];
   if (S) {
     if (!isLocked(S)) t.push({ id: 'designer', label: 'Designer' });
@@ -45,8 +50,9 @@ function renderBar() {
   const S = curS();
   const settings = Object.values(DB.settings).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   const tabs = tabsFor();
-  if (!tabs.some(t => t.id === DB.ui.tab)) DB.ui.tab = 'vault';
+  if (!tabs.some(t => t.id === DB.ui.tab)) DB.ui.tab = APP_MODE === 'play' ? 'home' : 'vault';
   const dark = effectiveDark();
+  if (APP_MODE === 'play') return renderPlayBar(S, tabs, dark);
   $('#bar').innerHTML = `<div class="appbar-in">
     <button class="brand" data-act="go" data-tab="vault" aria-label="Prime Forge vault">${brandMark()}<b>PRIME<span>·</span>FORGE</b></button>
     ${settings.length ? `<label class="setswitch"><span class="sr" hidden>Setting</span><select data-act-change="pickSetting" aria-label="Current setting">
@@ -123,7 +129,8 @@ function onChangeAct(e) {
 A.closeModal = () => closeModal();
 A.go = el => { DB.ui.tab = el.dataset.tab; if (el.dataset.sec) DB.ui.dsec = el.dataset.sec; if (el.dataset.cview) DB.ui.cview = el.dataset.cview; window.scrollTo(0, 0); render(); };
 A.toggleTheme = () => { DB.ui.theme = effectiveDark() ? 'light' : 'dark'; save(); render(); };
-A.pickSetting = el => { DB.ui.settingId = el.value || null; DB.ui.charId = null; DB.ui.cview = 'list'; if (DB.ui.tab === 'vault') DB.ui.tab = curS() && isLocked(curS()) ? 'chars' : 'designer'; render(); };
+A.pickSetting = el => { if (APP_MODE === 'play') { DB.ui.settingId = el.value || null; DB.ui.charId = null; DB.ui.cview = 'list'; DB.ui.tab = el.value ? 'chars' : 'home'; window.scrollTo(0, 0); return render(); }
+  DB.ui.settingId = el.value || null; DB.ui.charId = null; DB.ui.cview = 'list'; if (DB.ui.tab === 'vault') DB.ui.tab = curS() && isLocked(curS()) ? 'chars' : 'designer'; render(); };
 
 /* data-act helpers that mutate a path generically */
 function rootAndPath(el) { const [r, ...p] = el.dataset.path.split('.'); return [rootObj(r), p.join('.'), r]; }

@@ -1,5 +1,5 @@
 /* ============ Store: database, factories, normalization, import/export ============ */
-const STORE_KEY = 'primeforge.v1';
+const STORE_KEY = typeof APP_MODE !== 'undefined' && APP_MODE === 'play' ? 'primeforge.play.v1' : 'primeforge.v1';
 let DB = null;
 let POOL = { own: [], opp: [], res: [], last: null, opRoll: null, scale: 0, oppScale: 0, staticDiff: null };
 

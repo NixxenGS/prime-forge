@@ -27,8 +27,10 @@
   const KEY = 'fakefb.auth';
   function mkUser(o) {
     if (!o) return null;
-    const u = { uid: o.uid, isAnonymous: !o.email, email: o.email || null, providerData: o.email ? [{ providerId: 'google.com', email: o.email }] : [] };
-    u.linkWithPopup = async () => { const r = await call({ op: 'link', email: window.FAKE_GOOGLE_EMAIL || 'gm@example.com' }).catch(e => { if (e.code === 'auth/credential-already-in-use') e.credential = { email: window.FAKE_GOOGLE_EMAIL || 'gm@example.com' }; throw e; }); setUser({ uid: r.uid, email: r.email }); return { user: auth.currentUser }; };
+    const prov = o.provider || 'anonymous';
+    const u = { uid: o.uid, isAnonymous: prov === 'anonymous', email: o.email || null, displayName: o.name || null,
+      providerData: prov === 'anonymous' ? [] : [{ providerId: prov, email: o.email }] };
+    u.updateProfile = async p => { o.name = p.displayName; u.displayName = p.displayName; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) { } };
     return u;
   }
   const listeners = [];
@@ -36,9 +38,12 @@
   const auth = {
     currentUser: null,
     onAuthStateChanged(f) { listeners.push(f); setTimeout(() => f(auth.currentUser), 0); return () => { const i = listeners.indexOf(f); if (i >= 0) listeners.splice(i, 1); }; },
-    async signInAnonymously() { if (window.FAKE_AUTH_FAIL) { const e = new Error('Anonymous auth disabled'); e.code = 'auth/operation-not-allowed'; throw e; } const r = await call({ op: 'anon' }); setUser({ uid: r.uid }); return { user: auth.currentUser }; },
-    async signInWithPopup() { const r = await call({ op: 'google', email: window.FAKE_GOOGLE_EMAIL || 'gm@example.com' }); setUser({ uid: r.uid, email: r.email }); return { user: auth.currentUser }; },
-    async signInWithCredential(c) { const r = await call({ op: 'google', email: c.email }); setUser({ uid: r.uid, email: r.email }); return { user: auth.currentUser }; },
+    async signInAnonymously() { const r = await call({ op: 'anon' }); setUser({ uid: r.uid, provider: 'anonymous' }); return { user: auth.currentUser }; },
+    async signInWithPopup() { if (window.FAKE_POPUP_CLOSED) { const e = new Error('closed'); e.code = 'auth/popup-closed-by-user'; throw e; } const r = await call({ op: 'google', email: window.FAKE_GOOGLE_EMAIL || 'gm@example.com', name: window.FAKE_GOOGLE_NAME || '' }); setUser({ uid: r.uid, email: r.email, provider: 'google.com', name: r.name }); return { user: auth.currentUser }; },
+    async createUserWithEmailAndPassword(email, pw) { const r = await call({ op: 'signup', email, pw }); setUser({ uid: r.uid, email: r.email, provider: 'password' }); return { user: auth.currentUser }; },
+    async signInWithEmailAndPassword(email, pw) { const r = await call({ op: 'signin', email, pw }); setUser({ uid: r.uid, email: r.email, provider: 'password' }); return { user: auth.currentUser }; },
+    async sendPasswordResetEmail(email) { await call({ op: 'reset', email }); window.FAKE_RESET_SENT = email; },
+    async signOut() { setUser(null); },
   };
   try { const o = JSON.parse(localStorage.getItem(KEY) || 'null'); if (o) auth.currentUser = mkUser(o); } catch (e) { }
 
